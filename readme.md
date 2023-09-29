@@ -61,3 +61,21 @@ optional arguments:
   --log LOG        Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
   --config CONFIG  Path to the config.ini.
 ```
+
+
+## Plugins
+
+To utilize plugins, specify them under the [Plugins] section in the config.ini
+file, with the format plugin_name = channels. Here, plugin_name is the name of
+the plugin, and channels is a comma-separated list of channel names where the
+plugin should be applied.
+
+``` ini
+[Plugins]
+EmbedFonts = PV079
+```
+
+### EmbedFonts
+
+Automatically embeds fonts in downloaded PDF files ensuring visual consistency
+across different systems. Requires Ghostscript (command `gs`) and `pdffonts` tool installed.

@@ -11,7 +11,76 @@ import logging
 from datetime import datetime
 from xml.etree import ElementTree
 import configparser
+import importlib.util
 
+class PluginManager:
+    def __init__(self, config):
+        self.config = config
+        self.plugins = self.load_plugins()
+
+    def load_plugins(self):
+        plugins = {}
+        for plugin_name, channels in self.config['Plugins'].items():
+            for channel in channels.split(','):
+                if channel not in plugins:
+                    plugins[channel] = []
+                plugin_instance = self.load_plugin(plugin_name)
+                if plugin_instance:
+                    plugins[channel].append(plugin_instance)
+        return plugins
+
+    def load_plugin(self, name):
+        plugin_file_path = os.path.join('plugins', f'{name}.py')
+        if not os.path.exists(plugin_file_path):
+            logging.error(f"Plugin file not found: {plugin_file_path}")
+            return None
+
+        spec = importlib.util.spec_from_file_location(name, plugin_file_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+
+        logging.debug(f"Loaded module: {module}")  # Debug logging
+
+        plugin_class = getattr(module, name, None)
+        if not plugin_class:
+            logging.error(f"Plugin class {name} not found in {plugin_file_path}")
+            return None
+
+        return plugin_class()
+
+    def run_plugins(self, channel_name, file_path):
+        if channel_name in self.plugins:
+            for plugin in self.plugins[channel_name]:
+                plugin.on_file_downloaded(file_path)
+
+# class PluginManager:
+#     def __init__(self, config):
+#         self.config = config
+#         self.plugins = self.load_plugins()
+
+#     def load_plugins(self):
+#         plugins = {}
+#         for plugin_name, channels in self.config["Plugins"].items():
+#             for channel in channels.split(", "):
+#                 if channel not in plugins:
+#                     plugins[channel] = []
+#                 plugin_instance = self.load_plugin(plugin_name)
+#                 if plugin_instance:
+#                     plugins[channel].append(plugin_instance)
+#         return plugins
+
+#     def load_plugin(self, name):
+#         try:
+#             module = __import__(name)
+#             return getattr(module, name)()
+#         except ImportError as e:
+#             logging.error(f"Failed to load plugin: {name}")
+#             return None
+
+#     def run_plugins(self, channel, local_path):
+#         for plugin in self.plugins.get(channel, []):
+#             plugin.on_file_downloaded(local_path)
 
 def setup_logging(log_level):
     """
@@ -70,7 +139,7 @@ def download_file(local_path, server_url_path, file_name):
     logging.info(f"Downloaded {file_name} to {local_path}")
 
 
-def synchronize_directory(local_full_path, url_path_on_server):
+def synchronize_directory(local_full_path, url_path_on_server, channel, plugin_manager):
     """
     Synchronize local and server directories.
     """
@@ -101,12 +170,14 @@ def synchronize_directory(local_full_path, url_path_on_server):
                 if server_mod_time > local_mod_time:
                     logging.info(f"Downloading updated file {file_name} from server.")
                     download_file(local_path, server_url_path, file_name)
+                    plugin_manager.run_plugins(channel, local_path)
                     downloaded_files += 1
                 else:
                     logging.debug(f"File {file_name} is up to date.")
             else:
                 logging.info(f"File {file_name} does not exist locally. Downloading now.")
                 download_file(local_path, server_url_path, file_name)
+                plugin_manager.run_plugins(channel, local_path)
                 downloaded_files += 1
         except Exception as err:  # pylint: disable=broad-except
             logging.error(f"Error processing file {file_name}: {err}")
@@ -134,7 +205,7 @@ def main(config_path):
     config = configparser.ConfigParser()
     config.optionxform = str # case senstive strings
     config.read(config_path)
-
+    plugin_manager = PluginManager(config)
     try:
         # Expand ~ to the user's home directory
         root_dir = os.path.expanduser(config['Settings']['ROOT_DIR'])
@@ -156,14 +227,14 @@ def main(config_path):
 
     channel_count = len(config['Channels'].items())
 
-    for local_relative_path, url_path_on_server in config['Channels'].items():
-        local_full_path = os.path.join(root_dir, local_relative_path.lstrip('/'))
-        [total,downloaded,error] = synchronize_directory(local_full_path, url_path_on_server)
+    for channel, url_path_on_server in config['Channels'].items():
+        local_full_path = os.path.join(root_dir, channel.lstrip('/'))
+        [total,downloaded,error] = synchronize_directory(local_full_path, url_path_on_server, channel, plugin_manager)
         total_files += total
         total_downloaded += downloaded
         total_errors += error
         if (error > 0):
-            errors.append(local_relative_path)
+            errors.append(channel)
 
 
     ok_files = total_files - total_errors - total_downloaded

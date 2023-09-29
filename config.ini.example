@@ -6,3 +6,6 @@ LOG_LEVEL = INFO
 IA174 = /el/fi/podzim2023/IA174/um/slides_plain/before_lecture/
 PV079 = /el/fi/podzim2023/PV079/um/lectures/
 # Add more directories as needed
+
+[Plugins]
+EmbedFonts = PV079
