@@ -54,33 +54,31 @@ class PluginManager:
             for plugin in self.plugins[channel_name]:
                 plugin.on_file_downloaded(file_path)
 
-# class PluginManager:
-#     def __init__(self, config):
-#         self.config = config
-#         self.plugins = self.load_plugins()
+import itertools
+import fitz
+def hasAnnotations(file_path):
+    # Assume only pdf documents can have annotations
+    if file_path[-4:] != ".pdf":
+        return False
 
-#     def load_plugins(self):
-#         plugins = {}
-#         for plugin_name, channels in self.config["Plugins"].items():
-#             for channel in channels.split(", "):
-#                 if channel not in plugins:
-#                     plugins[channel] = []
-#                 plugin_instance = self.load_plugin(plugin_name)
-#                 if plugin_instance:
-#                     plugins[channel].append(plugin_instance)
-#         return plugins
+    def peek(iterable):
+        try:
+            first = next(iterable)
+        except StopIteration:
+            return None
+        return first, itertools.chain([first], iterable)
 
-#     def load_plugin(self, name):
-#         try:
-#             module = __import__(name)
-#             return getattr(module, name)()
-#         except ImportError as e:
-#             logging.error(f"Failed to load plugin: {name}")
-#             return None
 
-#     def run_plugins(self, channel, local_path):
-#         for plugin in self.plugins.get(channel, []):
-#             plugin.on_file_downloaded(local_path)
+    pdf_document = fitz.open(file_path)
+    for current_page in range(len(pdf_document)):
+        page = pdf_document.load_page(current_page)
+        if (peek(page.annots()) is not None):
+            return True
+            
+    pdf_document.close()
+    return False
+
+
 
 def setup_logging(log_level):
     """
@@ -169,9 +167,15 @@ def synchronize_directory(local_full_path, url_path_on_server, channel, plugin_m
                 logging.debug(f"Local file {local_path} timestamp: {local_mod_time}")
                 if server_mod_time > local_mod_time:
                     logging.info(f"Downloading updated file {file_name} from server.")
-                    download_file(local_path, server_url_path, file_name)
-                    plugin_manager.run_plugins(channel, local_path)
-                    downloaded_files += 1
+
+                    # Check if local pdf has annotations
+                    if hasAnnotations(local_path):
+                        logging.info(f"File {local_path} has local annotations! Skipping updating the file!")
+                    else:
+                        download_file(local_path, server_url_path, file_name)
+                        plugin_manager.run_plugins(channel, local_path)
+                        downloaded_files += 1
+
                 else:
                     logging.debug(f"File {file_name} is up to date.")
             else:
