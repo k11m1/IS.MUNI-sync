@@ -13,6 +13,9 @@ from xml.etree import ElementTree
 import configparser
 import importlib.util
 
+# TODO: move this to the config.ini
+ignore_txt = True
+
 class PluginManager:
     def __init__(self, config):
         self.config = config
@@ -46,6 +49,7 @@ class PluginManager:
         if not plugin_class:
             logging.error(f"Plugin class {name} not found in {plugin_file_path}")
             return None
+
 
         return plugin_class()
 
@@ -150,11 +154,17 @@ def synchronize_directory(local_full_path, url_path_on_server, channel, plugin_m
 
 
 
+    # TODO ignore txt files somehow and update total_files
     for objekt in root.findall(".//objekt"):
         file_name = objekt.find("jmeno_souboru").text
         local_path = os.path.join(local_full_path, file_name)
         server_url_path = objekt.find("cesta").text.rsplit("/", 1)[0] + "/"
+        #print(server_url_path)
         try:
+            if ignore_txt and file_name and file_name[-4:] == ".txt":
+                logging.debug(f"Skipping .txt file {local_path} {file_name}")
+                continue
+
             server_mod_time = datetime.strptime(
                 objekt.find("vlozeno").text, "%Y-%m-%dT%H:%M:%S"
             )
@@ -171,6 +181,8 @@ def synchronize_directory(local_full_path, url_path_on_server, channel, plugin_m
                     # Check if local pdf has annotations
                     if hasAnnotations(local_path):
                         logging.info(f"File {local_path} has local annotations! Skipping updating the file!")
+                        # TODO maybe save it with (1) or something?
+                        # TODO statistics of the downloads? it doesn't add up now :(
                     else:
                         download_file(local_path, server_url_path, file_name)
                         plugin_manager.run_plugins(channel, local_path)
@@ -220,6 +232,8 @@ def main(config_path):
         logging.critical(f"Unknown error, report to upstream: {e}")
         return
 
+
+
     errors = []
     total_files = 0
     total_downloaded = 0
@@ -228,6 +242,7 @@ def main(config_path):
     if 'Channels' not in config:
         logging.error("Missing 'Channels' section in the config file. Nothing to sync.")
         return
+
 
     channel_count = len(config['Channels'].items())
 
